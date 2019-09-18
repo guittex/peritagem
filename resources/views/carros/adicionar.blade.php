@@ -28,7 +28,7 @@
                         </div>
                         <div class="form-group">
                             <label for="Imagem">Imagem</label>
-                            <input type='file' id="imagem" class='form-control' name="imagem" accept="image/*" />
+                            <input type='file' id="imagem" class='form-control' name="imagem[]" accept="image/*" multiple />
                             <span style='font-weight:bold;color:black'>Tamanho maximo: 10MB</span>
                         </div>
 

@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Auth;
 
 use Validator;
 
+use Illuminate\Support\Facades\DB;
+
 use Illuminate\Support\Facades\Storage;
 
 use Intervention\Image\ImageManagerStatic as Image;
@@ -17,14 +19,16 @@ class ControllerCarros extends Controller
     public function __construct()
     {
         header("Access-Control-Allow-Origin: *");
+        $this->middleware("auth");
     
     }
 
     public function index()
     {
-        $carros = \App\Carros::paginate(12);
+        //Pega dados da model e define limite de paginação
+        $carros = \App\Carros::paginate(6);
 
-
+        //Retorna para view e manda a variavel retornada da model         
         return view('carros.index',compact('carros'));
     }
 
@@ -73,14 +77,16 @@ class ControllerCarros extends Controller
         
     }
 
-    public function getAlteraImagem($input_image , $parameter){
+        public function getAlteraImagem($input_image , $parameter){
 
-        if($parameter == 2){
+        //Parametros chamados pela função de editar
+        if($parameter == 2 or $parameter == '4'){
             $lastIdRequest = $input_image['id'];
-            $input_image = $input_image['imagem'];
+            $input_image = $input_image['imagem'];            
         }
 
-        if($parameter == 1){
+        //Parametros chamado pela função adicionar
+        if($parameter == 1 or $parameter == '3'){
             //Pego o ultimo ID do model
             $lastId = \App\Carros::orderBy('id', 'desc')
                                         ->take(1)
@@ -96,7 +102,7 @@ class ControllerCarros extends Controller
         //Pego o tamanho da imagem
         $size = getimagesize($input_image);
 
-        //Converto a largura e tamanho para 20% a menos        
+        //Converto a largura e tamanho para 20% a menos  
         $x = $size[0] - (20 * $size[0] / 100);
         $y = $size[1] - (10 * $size[0] / 100);
 
@@ -120,21 +126,37 @@ class ControllerCarros extends Controller
         $fileName = substr($fileName, 0 , $somaName );
 
         //Faço a alteração do formato do arquivo
-        if($parameter == 1){
-            $newFileName = $ultimoId . '-' . $fileName .'.jpg';    
+        if($parameter == 1 or $parameter == '3'){
+            $newFileName = $ultimoId . '-' . $fileName .'.jpg';  
+            $newFileNameMinitiatura = $ultimoId . '-' . $fileName .'.jpg';      
         }
         
-        if($parameter == 2){
+        if($parameter == 2 or $parameter == '4' ){
             $newFileName = $lastIdRequest . '-' . $fileName .'.jpg';  
+            $newFileNameMinitiatura = $lastIdRequest . '-' . $fileName .'.jpg';  
+
         }
         
         //Crio onde quero salvar meu novo arquivo        
-        $path = public_path("public/" . $newFileName);              
+        $path = public_path("storage/" . $newFileName);  
+        
+        //Crio o caminho da miniatura
+        if($parameter == 3 or $parameter == '4'){
+            $pathMiniatura = public_path("storage/Miniaturas/" . $newFileName);  
+        }
         
         //Faço a criação do arquivo        
-        Image::make($input_image)->resize($newDimension[0], $newDimension[1])->save($path);
-        
-        return $newFileName;
+        $file = Image::make($input_image)->resize($newDimension[0], $newDimension[1])->save($path);
+
+        //Faço a criação da miniatura
+        if($parameter == '3' or $parameter == '4'){
+            $fileMiniatura = Image::make($input_image)->resize('60', '60')->save($pathMiniatura);
+
+            return $newFileNameMinitiatura;
+        }else{
+            return $newFileName;
+        }
+
 
     }
 
@@ -149,7 +171,7 @@ class ControllerCarros extends Controller
         if($equipamentos){
             return response()->json(['data' => $equipamentos, 'status' => true]);
         }else{
-            return response()->json(['data' => 'Erro ao adicionaro', 'status' => false]);
+            return response()->json(['data' => 'Erro ao adicionar', 'status' => false]);
 
         }        
                 
@@ -174,38 +196,46 @@ class ControllerCarros extends Controller
         //Pego só o input da imagem
         $input_image = $request->file('imagem');
 
-        //Verifica se a imagem não está vazia
-        if(!empty($input_image)){
+        //Pego a quantidade de arquivos 
+        $cont = count($input_image);
 
-            //Pega a entensão o arquivo
-            $tipo_arquivo = $request->file('imagem')->getClientOriginalExtension();
-
-            //Pega o tamanho do arquivo
-            $tamanho_arquivo = $request->file('imagem')->getClientSize(); 
-
-            //Verifica tamanho do arquivo na função getTamanhoMaximo
-            if($tamanho_arquivo >  10000000){
-                $carrosClass->getTamanhoMaximo($tamanho_arquivo); 
-                
-                return redirect()->route('carros.adicionar');
-
-            }
-            
-            //Cria um array dos tipos validos que quero
-            $tipos_validos = array('png','jpg', 'JPG', 'jpeg');
-
-            //Chama a função e passa dois parametros
-            $validateExtension = $carrosClass->getExtensaoValida($tipo_arquivo, $tipos_validos);
-
-            //Se função retornar true arquivo valido
-            if($validateExtension == true){
-                $ok = "Entensão valida";
-
-            }else{
-                return redirect()->route('carros.adicionar');
-            }            
+        //Defino a posição 0
+        $pos = 0;
         
-        }        
+        if($cont == 1){
+            //Verifica se a imagem não está vazia
+            if(!empty($input_image)){
+
+                //Pega a entensão do arquivo
+                $tipo_arquivo = $request->file('imagem')[$pos]->getClientOriginalExtension();
+
+                //Pega o tamanho do arquivo
+                $tamanho_arquivo = $request->file('imagem')[$pos]->getClientSize(); 
+
+                //Verifica tamanho do arquivo na função getTamanhoMaximo
+                if($tamanho_arquivo >  10000000){
+                    $carrosClass->getTamanhoMaximo($tamanho_arquivo); 
+                    
+                    return redirect()->route('carros.adicionar');
+
+                }
+                
+                //Cria um array dos tipos validos que queremos
+                $tipos_validos = array('png','jpg', 'JPG', 'jpeg');
+
+                //Chama a função e passa dois parametros
+                $validateExtension = $carrosClass->getExtensaoValida($tipo_arquivo, $tipos_validos);
+
+                //Se função retornar true arquivo valido
+                if($validateExtension == true){
+                    $ok = "Entensão valida";
+
+                }else{
+                    return redirect()->route('carros.adicionar');
+                }            
+            
+            }  
+        }      
         
         //Cria um array de validação dos input do html
         $validatedData = array(
@@ -241,15 +271,43 @@ class ControllerCarros extends Controller
             if ($request->hasFile('imagem')) {                       
                 
                 $parameter = 1;
+
+                if($cont >= 1){
+                    while ($pos < $cont){
+
+                        if($pos == $cont){
+                            echo "acabou";
+                        }
+                        
+                        $file = $carrosClass->getAlteraImagem($input_image[$pos], $parameter); 
+                        
+                        $fileMiniatura = $carrosClass->getAlteraImagem($input_image[$pos], '3');     
+
+                        $carros->imagem = 'storage/'. $file ;
+
+                        $carros->img_miniatura = 'storage/Miniaturas/'. $file ;
+
+                        DB::insert("INSERT into dbo.carros(marca,modelo,ano,created_at, updated_at,imagem,img_miniatura,id_peritagem) values ('$carros->marca', '$carros->modelo', '$carros->ano', GETDATE(), GETDATE(), '$carros->imagem', '$carros->img_miniatura', 242 )");
+                        
+                        $pos = $pos + 1;
+                    }
+                }else{                
+                    //Chama função e retorna o nome do arquivo editado                
+                    $file = $carrosClass->getAlteraImagem($input_image, $parameter);
+                    $fileMiniatura = $carrosClass->getAlteraImagem($input_image, '3');
+
+                    /*$teste =  copy("../storage/app/public/$file", "C:/Users/guilherme.o/Pictures/Estetica/$file");
+
+                    dd($teste);*/
+
+                    $carros->imagem = 'storage/'. $file ;
+                    $carros->img_miniatura = 'storage/Miniaturas/'. $file ;
+
+                    $carros->save();
+
+                }
                 
-                //Chama função e retorna o nome do arquivo editado
-                $file = $carrosClass->getAlteraImagem($input_image, $parameter);
-
-                $carros->imagem = 'public/'. $file ;
-
             }
-
-            $carros->save();
 
             \Session::flash('flash_message',[
                 "msg" => "Equipamento salvo com sucesso",
@@ -257,8 +315,8 @@ class ControllerCarros extends Controller
             ]);
 
             return redirect()->route('carros.index');
-
-        }   
+                
+        }
     } 
     
     public function editar(Request $request){
@@ -285,10 +343,29 @@ class ControllerCarros extends Controller
         $carros->ano = $request->ano;
 
         if($request->hasFile("imagem")){
-            
-            $parameter = 2;            
+            if (file_exists($carros->imagem)){
+                unlink($carros->imagem);
+            }
+
+            if(file_exists($carros->img_miniatura)){
+                unlink($carros->img_miniatura);
+            }
+
+            //Defino o parametro 2            
+            $parameter = 2;    
+
+            //Chamo a função para alterar a imagem
             $file = $carrosClass->getAlteraImagem($input_image, $parameter);
-            $carros->imagem = 'public/'. $file ;
+
+            //Chamo a função para alterar a miniatura
+            $fileMiniatura = $carrosClass->getAlteraImagem($input_image, '4');
+
+            //Salvo o caminho da imagem
+            $carros->imagem = 'storage/'. $file ;
+
+            //Salvo o caminho da miniatura
+            $carros->img_miniatura = 'storage/Miniaturas/'. $fileMiniatura ;
+
         }
         
         $carros->save();
@@ -315,7 +392,14 @@ class ControllerCarros extends Controller
             return redirect()->route('carros.index');
 
         }else{
-        
+            if (file_exists($registro->imagem)){
+                unlink($registro->imagem);
+            }
+
+            if(file_exists($registro->img_miniatura)){
+                unlink($registro->img_miniatura);
+            }
+
             $registro->delete($registro);
 
             \Session::flash('flash_message', [
@@ -324,6 +408,63 @@ class ControllerCarros extends Controller
             ]);
             
             return redirect()->route('carros.index');
+        }
+    }
+
+    public function pesquisar(Request $request){
+        
+        $arrayValidate = array(
+            "id" => $request->id,
+            "nf" => $request->nf
+        );
+
+        $validate = array_search(!null, $arrayValidate);
+
+        if($validate == 'id'){
+            $id = intval($request->id);
+            if($id == 0){
+                \Session::flash('flash_message',[
+                    "msg" => "São permitidos apenas numeros no campo do ID",
+                    "class" => "alert-danger"
+                ]);
+
+                return redirect()->route('carros.index');
+            }
+            $registro = \App\Carros::where('id' , $id)->paginate(1);
+
+            $contador = count($registro->items());            
+
+            if($contador == 0){
+                \Session::flash('flash_message',[
+                    "msg" => "Nenhum registro encontrado",
+                    "class" => "alert-danger"
+                ]);
+
+                return redirect()->route('carros.index');
+            }else{
+                $carros = $registro;
+
+                return view('carros.index', compact('carros'));
+            }
+        }
+        
+        if( $validate == "nf"){
+            $nf = $request->nf;
+
+            $carros = \App\Carros::where('marca', 'like' , "%$nf%")->paginate(100);
+
+            $contador = count($carros);
+
+            if($contador == 0){
+                \Session::flash('flash_message',[
+                    'msg' => 'Nenhum registro encontrado',
+                    'class' => 'alert-danger'
+                ]);
+                
+                return redirect()->route('carros.index');
+            }
+
+            return view('carros.index', compact('carros'));
         }
     }
     
